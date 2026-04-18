@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <div class="header">
+    <div>
+        <h1>📍 Location Management System</h1>
+        <p>Welcome, <strong><%= user.name %></strong>!</p>
+    </div>
+    <div class="buttons">
+        <a href="/add" class="btn btn-primary">➕ Add Location</a>
+        <a href="/profile" class="btn btn-info">👤 Profile</a>
+        <a href="/delete-all" class="btn btn-danger" onclick="return confirm('Delete all your locations?')">🗑️ Delete All</a>
+        <a href="/logout" class="btn btn-warning">🚪 Logout</a>
+    </div>
+</div>
+    <title>Location Management System</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+        }
+        
+        .buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .btn-warning {
+            background: #ff9800;
+            color: white;
+        }
+        
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+        
+        .btn-info {
+            background: #2196F3;
+            color: white;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        
+        .map-container {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        #map {
+            height: 450px;
+            border-radius: 8px;
+        }
+        
+        .table-container {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        th {
+            background: #667eea;
+            color: white;
+            position: sticky;
+            top: 0;
+        }
+        
+        tr:hover {
+            background: #f5f5f5;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .action-btn {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .edit-btn {
+            background: #ff9800;
+            color: white;
+        }
+        
+        .delete-btn {
+            background: #f44336;
+            color: white;
+        }
+        
+        .view-btn {
+            background: #2196F3;
+            color: white;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .stat-number {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .stat-label {
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .file-link {
+            color: #2196F3;
+            text-decoration: none;
+        }
+        
+        .file-link:hover {
+            text-decoration: underline;
+        }
+        
+        @media (max-width: 768px) {
+            th, td {
+                font-size: 12px;
+                padding: 8px;
+            }
+            
+            .header {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📍 Location Management System</h1>
+            <div class="buttons">
+                <a href="/add" class="btn btn-primary">➕ Add Location</a>
+                <a href="/sample" class="btn btn-warning">✨ Add Sample</a>
+                <a href="/delete-all" class="btn btn-danger" onclick="return confirm('Delete all locations?')">🗑️ Delete All</a>
+            </div>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number"><%= locations.length %></div>
+                <div class="stat-label">Total Locations</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">
+                    <%= locations.filter(l => l.document).length %>
+                </div>
+                <div class="stat-label">Documents Attached</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">
+                    <%= [...new Set(locations.map(l => l.type))].length %>
+                </div>
+                <div class="stat-label">Location Types</div>
+            </div>
+        </div>
+        
+        <div class="map-container">
+            <h3 style="margin-bottom: 15px;">🗺️ Location Map</h3>
+            <div id="map"></div>
+        </div>
+        
+        <div class="table-container">
+            <h3 style="margin-bottom: 15px;">📋 All Locations</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Info</th>
+                        <th>City</th>
+                        <th>Coordinates</th>
+                        <th>Document</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (locations.length === 0) { %>
+                        <tr>
+                            <td colspan="9" style="text-align: center;">No locations found. Click "Add Location" to get started!</td>
+                        </tr>
+                    <% } %>
+                    <% locations.forEach(location => { %>
+                        <tr>
+                            <td><%= location.id %></td>
+                            <td><strong><%= location.name %></strong></td>
+                            <td><span style="background: #e3f2fd; padding: 3px 8px; border-radius: 12px;"><%= location.type %></span></td>
+                            <td><%= location.info %></td>
+                            <td><%= location.city.charAt(0).toUpperCase() + location.city.slice(1) %></td>
+                            <td><small><%= location.lat.toFixed(4) %>, <%= location.lng.toFixed(4) %></small></td>
+                            <td>
+                                <% if (location.document) { %>
+                                    <a href="/uploads/<%= location.document %>" target="_blank" class="file-link">📄 View File</a>
+                                <% } else { %>
+                                    <span style="color: #999;">No file</span>
+                                <% } %>
+                            </td>
+                            <td><small><%= new Date(location.createdAt).toLocaleDateString() %></small></td>
+                            <td>
+                                <div class="action-buttons">
+                                    <a href="/edit/<%= location.id %>" class="action-btn edit-btn">✏️ Edit</a>
+                                    <a href="/delete/<%= location.id %>" class="action-btn delete-btn" onclick="return confirm('Delete this location?')">🗑️ Delete</a>
+                                </div>
+                            </td>
+                        </tr>
+                    <% }) %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <script>
+        // Initialize map
+        var map = L.map('map').setView([20.5937, 78.9629], 5);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        
+        var locations = <%- JSON.stringify(locations) %>;
+        
+        if (locations && locations.length > 0) {
+            var bounds = [];
+            locations.forEach(location => {
+                var marker = L.marker([location.lat, location.lng])
+                    .addTo(map)
+                    .bindPopup(`
+                        <b>${location.name}</b><br>
+                        Type: ${location.type}<br>
+                        Info: ${location.info}<br>
+                        City: ${location.city}<br>
+                        ${location.document ? '<a href="/uploads/' + location.document + '" target="_blank">📄 View Document</a>' : ''}
+                    `);
+                bounds.push([location.lat, location.lng]);
+            });
+            map.fitBounds(bounds);
+        }
+    </script>
+</body>
+</html>

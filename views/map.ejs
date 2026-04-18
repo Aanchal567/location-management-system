@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Location Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        #map {
+            height: 500px;
+            border-radius: 10px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            margin-right: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .info {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h2>📍 Location Map</h2>
+    <a href="/form"><button style="background: #2196F3;">➕ Add New</button></a>
+    <a href="/sample"><button style="background: #FF9800;">✨ Add Sample</button></a>
+    <a href="/clear"><button style="background: #f44336;">🗑️ Clear All</button></a>
+</div>
+
+<div id="map"></div>
+
+<div class="info" id="info">
+    <strong>Total Locations: <%= locations.length %></strong>
+</div>
+
+<script>
+    // Data directly from server
+    var locations = <%- JSON.stringify(locations) %>;
+    
+    console.log('Locations received:', locations);
+    
+    // Initialize map
+    var map = L.map('map').setView([20.5937, 78.9629], 5);
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+    
+    if (locations && locations.length > 0) {
+        var bounds = [];
+        
+        locations.forEach(function(loc) {
+            L.marker([loc.lat, loc.lng])
+                .addTo(map)
+                .bindPopup(`
+                    <b>${loc.name}</b><br>
+                    Type: ${loc.type}<br>
+                    Info: ${loc.info}
+                `);
+            bounds.push([loc.lat, loc.lng]);
+        });
+        
+        map.fitBounds(bounds);
+        document.getElementById('info').innerHTML = `<strong>✅ ${locations.length} location(s) found!</strong>`;
+    } else {
+        document.getElementById('info').innerHTML = '<strong>⚠️ No locations yet! Click "Add Sample" to get started.</strong>';
+    }
+</script>
+
+</body>
+</html>
