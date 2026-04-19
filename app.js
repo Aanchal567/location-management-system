@@ -87,30 +87,6 @@ mongoose.connect(process.env.MONGODB_URI, {
 .then(() => console.log('✅ MongoDB Connected Successfully!'))
 .catch(err => console.log('❌ MongoDB Connection Error:', err.message));
 
-// City database (fallback)
-const cityDatabase = {
-    'delhi': { lat: 28.6139, lng: 77.2090 },
-    'mumbai': { lat: 19.0760, lng: 72.8777 },
-    'jaipur': { lat: 26.9124, lng: 75.7873 },
-    'jalandhar': { lat: 31.3260, lng: 75.5762 },
-    'amritsar': { lat: 31.6340, lng: 74.8723 },
-    'ludhiana': { lat: 30.9010, lng: 75.8573 },
-    'chandigarh': { lat: 30.7333, lng: 76.7794 },
-    'kolkata': { lat: 22.5726, lng: 88.3639 },
-    'pune': { lat: 18.5204, lng: 73.8567 },
-    'hyderabad': { lat: 17.3850, lng: 78.4867 },
-    'chennai': { lat: 13.0827, lng: 80.2707 },
-    'bangalore': { lat: 12.9716, lng: 77.5946 }
-};
-
-function getCityCoordinates(cityName) {
-    const cityLower = cityName.toLowerCase().trim();
-    if (cityDatabase[cityLower]) {
-        return cityDatabase[cityLower];
-    }
-    return { lat: 28.6139, lng: 77.2090 };
-}
-
 // ============ API ROUTES FOR LOCATION SELECTOR ============
 
 // Get all countries
@@ -154,7 +130,7 @@ app.get('/api/cities/:countryCode/:stateCode', (req, res) => {
     res.json(cities);
 });
 
-// Search city
+// Search city API (optional)
 app.get('/api/search-city', async (req, res) => {
     const query = req.query.q?.toLowerCase();
     if (!query || query.length < 2) {
@@ -219,6 +195,7 @@ passport.deserializeUser(async (id, done) => {
     }
 });
 
+// Middleware for authentication
 function isAuthenticated(req, res, next) {
     if (req.isAuthenticated()) {
         return next();
@@ -235,10 +212,12 @@ function isGuest(req, res, next) {
 
 // ============ AUTH ROUTES ============
 
+// Register page
 app.get('/register', isGuest, (req, res) => {
     res.render('register');
 });
 
+// Register user
 app.post('/register', isGuest, async (req, res) => {
     const { name, email, password, confirmPassword } = req.body;
     
@@ -271,15 +250,18 @@ app.post('/register', isGuest, async (req, res) => {
     });
 });
 
+// Login page
 app.get('/login', isGuest, (req, res) => {
     res.render('login', { error: req.query.error });
 });
 
+// Login handler
 app.post('/login', isGuest, passport.authenticate('local', {
     successRedirect: '/locations',
     failureRedirect: '/login?error=1'
 }));
 
+// Logout
 app.get('/logout', (req, res) => {
     req.logout((err) => {
         if (err) return next(err);
@@ -287,13 +269,14 @@ app.get('/logout', (req, res) => {
     });
 });
 
-// ============ PROTECTED ROUTES ============
+// ============ PROTECTED ROUTES (Require Login) ============
 
+// Home redirect
 app.get('/', isAuthenticated, (req, res) => {
     res.redirect('/locations');
 });
 
-// Main locations page (TABLE + MAP view)
+// Main dashboard - Table + Map view
 app.get('/locations', isAuthenticated, async (req, res) => {
     const userLocations = await Location.find({ userId: req.user._id }).sort({ createdAt: -1 });
     
@@ -302,7 +285,10 @@ app.get('/locations', isAuthenticated, async (req, res) => {
         byType: {
             payment: userLocations.filter(l => l.type === 'payment').length,
             event: userLocations.filter(l => l.type === 'event').length,
-            delivery: userLocations.filter(l => l.type === 'delivery').length
+            delivery: userLocations.filter(l => l.type === 'delivery').length,
+            office: userLocations.filter(l => l.type === 'office').length,
+            shop: userLocations.filter(l => l.type === 'shop').length,
+            restaurant: userLocations.filter(l => l.type === 'restaurant').length
         },
         recent: userLocations.slice(0, 5)
     };
@@ -319,33 +305,43 @@ app.get('/add', isAuthenticated, (req, res) => {
     res.render('form', { edit: null });
 });
 
-// Add location POST
+// Add location POST - UPDATED for Country/State/City
 app.post('/add', isAuthenticated, upload.single('document'), async (req, res) => {
-    const { name, type, info, city, latitude, longitude } = req.body;
+    const { name, type, info, latitude, longitude, city } = req.body;
     
-    let finalLat, finalLng;
+    console.log('Received location data:', { name, type, info, latitude, longitude, city });
     
-    if (latitude && longitude) {
-        finalLat = parseFloat(latitude);
-        finalLng = parseFloat(longitude);
+    // Validate coordinates
+    const finalLat = parseFloat(latitude);
+    const finalLng = parseFloat(longitude);
+    
+    if (isNaN(finalLat) || isNaN(finalLng)) {
+        console.log('Invalid coordinates, using default Delhi');
+        const newLocation = new Location({
+            userId: req.user._id,
+            name: name,
+            type: type,
+            info: info,
+            city: city || 'Delhi',
+            lat: 28.6139,
+            lng: 77.2090,
+            document: req.file ? req.file.filename : null
+        });
+        await newLocation.save();
     } else {
-        const coords = getCityCoordinates(city);
-        finalLat = coords.lat;
-        finalLng = coords.lng;
+        const newLocation = new Location({
+            userId: req.user._id,
+            name: name,
+            type: type,
+            info: info,
+            city: city || 'Selected City',
+            lat: finalLat,
+            lng: finalLng,
+            document: req.file ? req.file.filename : null
+        });
+        await newLocation.save();
     }
     
-    const newLocation = new Location({
-        userId: req.user._id,
-        name: name,
-        type: type,
-        info: info,
-        city: city,
-        lat: finalLat,
-        lng: finalLng,
-        document: req.file ? req.file.filename : null
-    });
-    
-    await newLocation.save();
     res.redirect('/locations');
 });
 
@@ -364,27 +360,30 @@ app.get('/edit/:id', isAuthenticated, async (req, res) => {
 // Update location
 app.post('/update/:id', isAuthenticated, upload.single('document'), async (req, res) => {
     const id = req.params.id;
-    const { name, type, info, city, latitude, longitude } = req.body;
+    const { name, type, info, latitude, longitude, city } = req.body;
     
-    let finalLat, finalLng;
-    
-    if (latitude && longitude) {
-        finalLat = parseFloat(latitude);
-        finalLng = parseFloat(longitude);
-    } else {
-        const coords = getCityCoordinates(city);
-        finalLat = coords.lat;
-        finalLng = coords.lng;
-    }
+    const finalLat = parseFloat(latitude);
+    const finalLng = parseFloat(longitude);
     
     const updateData = {
-        name, type, info, city,
-        lat: finalLat,
-        lng: finalLng,
+        name, 
+        type, 
+        info,
+        city: city || 'Updated Location',
+        lat: isNaN(finalLat) ? 28.6139 : finalLat,
+        lng: isNaN(finalLng) ? 77.2090 : finalLng,
         updatedAt: new Date()
     };
     
     if (req.file) {
+        // Delete old file if exists
+        const oldLocation = await Location.findOne({ _id: id, userId: req.user._id });
+        if (oldLocation && oldLocation.document) {
+            const oldFilePath = path.join(__dirname, 'uploads', oldLocation.document);
+            if (fs.existsSync(oldFilePath)) {
+                fs.unlinkSync(oldFilePath);
+            }
+        }
         updateData.document = req.file.filename;
     }
     
@@ -392,7 +391,7 @@ app.post('/update/:id', isAuthenticated, upload.single('document'), async (req, 
     res.redirect('/locations');
 });
 
-// Delete location
+// Delete single location
 app.get('/delete/:id', isAuthenticated, async (req, res) => {
     const id = req.params.id;
     const location = await Location.findOne({ _id: id, userId: req.user._id });
@@ -425,7 +424,7 @@ app.get('/delete-all', isAuthenticated, async (req, res) => {
     res.redirect('/locations');
 });
 
-// API for map
+// API for map - get all user locations
 app.get('/api/locations', isAuthenticated, async (req, res) => {
     const userLocations = await Location.find({ userId: req.user._id });
     res.json(userLocations);
@@ -436,7 +435,7 @@ app.get('/profile', isAuthenticated, (req, res) => {
     res.render('profile', { user: req.user });
 });
 
-// Start server
+// ============ START SERVER ============
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`\n========================================`);
@@ -447,7 +446,4 @@ app.listen(PORT, () => {
     console.log(`🔑 Login: http://localhost:${PORT}/login`);
     console.log(`📍 Dashboard: http://localhost:${PORT}/locations`);
     console.log(`========================================\n`);
-});
-app.get('/add', isAuthenticated, (req, res) => {
-    res.render('form', { edit: null });  // cities variable nahi bhejna
 });
