@@ -1,157 +1,93 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title><%= edit ? 'Edit Location' : 'Add Location' %></title>
+    <title>Add Location</title>
     <style>
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: Arial, sans-serif;
+            max-width: 500px;
+            margin: 50px auto;
             padding: 20px;
-            min-height: 100vh;
+            background: #f5f5f5;
         }
-        
         .container {
-            max-width: 600px;
-            margin: 0 auto;
-        }
-        
-        .form-box {
             background: white;
             padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-        
-        h2 {
-            margin-top: 0;
-            color: #333;
-            text-align: center;
-        }
-        
-        .form-group {
-            margin-bottom: 20px;
-        }
-        
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: bold;
-            color: #555;
-        }
-        
         input, select, textarea {
             width: 100%;
             padding: 10px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 14px;
+            margin: 10px 0 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
             box-sizing: border-box;
         }
-        
-        input:focus, select:focus, textarea:focus {
-            border-color: #667eea;
-            outline: none;
-        }
-        
-        textarea {
-            resize: vertical;
-            min-height: 80px;
-        }
-        
-        .file-info {
-            background: #f0f0f0;
-            padding: 10px;
-            border-radius: 5px;
-            margin-top: 10px;
-            font-size: 12px;
-        }
-        
         button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #4CAF50;
             color: white;
-            padding: 12px 24px;
+            padding: 12px;
             border: none;
-            border-radius: 8px;
+            border-radius: 5px;
             cursor: pointer;
             width: 100%;
             font-size: 16px;
-            font-weight: bold;
         }
-        
         button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            background: #45a049;
         }
-        
-        .back-link {
-            display: block;
-            text-align: center;
-            margin-top: 20px;
-            color: white;
-            text-decoration: none;
-        }
-        
-        .back-link:hover {
-            text-decoration: underline;
+        h2 {
+            margin-top: 0;
+            color: #333;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="form-box">
-            <h2><%= edit ? '✏️ Edit Location' : '➕ Add New Location' %></h2>
-            
-            <form action="<%= edit ? '/update/' + edit.id : '/add' %>" method="POST" enctype="multipart/form-data">
-                <div class="form-group">
-                    <label>📍 Name:</label>
-                    <input type="text" name="name" value="<%= edit ? edit.name : '' %>" required placeholder="Enter location name">
-                </div>
-                
-                <div class="form-group">
-                    <label>📌 Type:</label>
-                    <select name="type" required>
-                        <option value="">-- Select Type --</option>
-                        <option value="payment" <%= edit && edit.type === 'payment' ? 'selected' : '' %>>💳 Payment</option>
-                        <option value="event" <%= edit && edit.type === 'event' ? 'selected' : '' %>>🎉 Event</option>
-                        <option value="delivery" <%= edit && edit.type === 'delivery' ? 'selected' : '' %>>📦 Delivery</option>
-                        <option value="office" <%= edit && edit.type === 'office' ? 'selected' : '' %>>🏢 Office</option>
-                        <option value="shop" <%= edit && edit.type === 'shop' ? 'selected' : '' %>>🛍️ Shop</option>
-                        <option value="restaurant" <%= edit && edit.type === 'restaurant' ? 'selected' : '' %>>🍽️ Restaurant</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label>ℹ️ Info:</label>
-                    <textarea name="info" required placeholder="Enter location information"><%= edit ? edit.info : '' %></textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label>🏙️ City:</label>
-                    <select name="city" required>
-                        <option value="">-- Select City --</option>
-                        <% cities.forEach(city => { %>
-                            <option value="<%= city %>" <%= edit && edit.city === city ? 'selected' : '' %>>
-                                <%= city.charAt(0).toUpperCase() + city.slice(1) %>
-                            </option>
-                        <% }); %>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label>📎 Attach Document (PDF, Image, etc.):</label>
-                    <input type="file" name="document" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
-                    <% if (edit && edit.document) { %>
-                        <div class="file-info">
-                            Current file: <a href="/uploads/<%= edit.document %>" target="_blank">📄 <%= edit.document %></a>
-                        </div>
-                    <% } %>
-                </div>
-                
-                <button type="submit"><%= edit ? 'Update Location' : 'Add Location' %></button>
-            </form>
-        </div>
+        <h2><%= edit ? '✏️ Edit Location' : '➕ Add New Location' %></h2>
         
-        <a href="/locations" class="back-link">← Back to Locations</a>
+        <form action="<%= edit ? '/update/' + edit.id : '/add' %>" method="POST" enctype="multipart/form-data">
+            <div class="form-group">
+                <label>📍 Name:</label>
+                <input type="text" name="name" value="<%= edit ? edit.name : '' %>" required placeholder="Enter location name">
+            </div>
+            
+            <div class="form-group">
+                <label>📌 Type:</label>
+                <select name="type" required>
+                    <option value="">-- Select Type --</option>
+                    <option value="payment" <%= edit && edit.type === 'payment' ? 'selected' : '' %>>💳 Payment</option>
+                    <option value="event" <%= edit && edit.type === 'event' ? 'selected' : '' %>>🎉 Event</option>
+                    <option value="delivery" <%= edit && edit.type === 'delivery' ? 'selected' : '' %>>📦 Delivery</option>
+                    <option value="office" <%= edit && edit.type === 'office' ? 'selected' : '' %>>🏢 Office</option>
+                    <option value="shop" <%= edit && edit.type === 'shop' ? 'selected' : '' %>>🛍️ Shop</option>
+                    <option value="restaurant" <%= edit && edit.type === 'restaurant' ? 'selected' : '' %>>🍽️ Restaurant</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>ℹ️ Info:</label>
+                <textarea name="info" rows="3" required placeholder="Enter location information"><%= edit ? edit.info : '' %></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label>🏙️ City:</label>
+                <input type="text" name="city" value="<%= edit ? edit.city : '' %>" required placeholder="Enter city name">
+            </div>
+            
+            <div class="form-group">
+                <label>📎 Attach Document (Optional):</label>
+                <input type="file" name="document">
+                <% if (edit && edit.document) { %>
+                    <p style="margin-top: 5px; font-size: 12px;">Current file: <a href="/uploads/<%= edit.document %>" target="_blank">View</a></p>
+                <% } %>
+            </div>
+            
+            <button type="submit"><%= edit ? 'Update Location' : 'Add Location' %></button>
+        </form>
+        
+        <a href="/locations" style="display: block; text-align: center; margin-top: 20px; color: #666;">← Back to Locations</a>
     </div>
 </body>
 </html>

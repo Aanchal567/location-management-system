@@ -9,6 +9,9 @@ const session = require('express-session');
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
 
+// Import locations data
+const locationsData = require('./data/locations');
+
 const app = express();
 
 // File upload setup
@@ -84,7 +87,7 @@ mongoose.connect(process.env.MONGODB_URI, {
 .then(() => console.log('✅ MongoDB Connected Successfully!'))
 .catch(err => console.log('❌ MongoDB Connection Error:', err.message));
 
-// City database
+// City database (fallback)
 const cityDatabase = {
     'delhi': { lat: 28.6139, lng: 77.2090 },
     'mumbai': { lat: 19.0760, lng: 72.8777 },
@@ -92,7 +95,12 @@ const cityDatabase = {
     'jalandhar': { lat: 31.3260, lng: 75.5762 },
     'amritsar': { lat: 31.6340, lng: 74.8723 },
     'ludhiana': { lat: 30.9010, lng: 75.8573 },
-    'chandigarh': { lat: 30.7333, lng: 76.7794 }
+    'chandigarh': { lat: 30.7333, lng: 76.7794 },
+    'kolkata': { lat: 22.5726, lng: 88.3639 },
+    'pune': { lat: 18.5204, lng: 73.8567 },
+    'hyderabad': { lat: 17.3850, lng: 78.4867 },
+    'chennai': { lat: 13.0827, lng: 80.2707 },
+    'bangalore': { lat: 12.9716, lng: 77.5946 }
 };
 
 function getCityCoordinates(cityName) {
@@ -102,6 +110,81 @@ function getCityCoordinates(cityName) {
     }
     return { lat: 28.6139, lng: 77.2090 };
 }
+
+// ============ API ROUTES FOR LOCATION SELECTOR ============
+
+// Get all countries
+app.get('/api/countries', (req, res) => {
+    const countries = Object.keys(locationsData).map(key => ({
+        code: key,
+        name: locationsData[key].name
+    }));
+    res.json(countries);
+});
+
+// Get states by country
+app.get('/api/states/:countryCode', (req, res) => {
+    const country = locationsData[req.params.countryCode];
+    if (!country) {
+        return res.json([]);
+    }
+    const states = Object.keys(country.states).map(key => ({
+        code: key,
+        name: country.states[key].name
+    }));
+    res.json(states);
+});
+
+// Get cities by country and state
+app.get('/api/cities/:countryCode/:stateCode', (req, res) => {
+    const country = locationsData[req.params.countryCode];
+    if (!country) {
+        return res.json([]);
+    }
+    const state = country.states[req.params.stateCode];
+    if (!state) {
+        return res.json([]);
+    }
+    const cities = Object.keys(state.cities).map(key => ({
+        code: key,
+        name: state.cities[key].name,
+        lat: state.cities[key].lat,
+        lng: state.cities[key].lng
+    }));
+    res.json(cities);
+});
+
+// Search city
+app.get('/api/search-city', async (req, res) => {
+    const query = req.query.q?.toLowerCase();
+    if (!query || query.length < 2) {
+        return res.json([]);
+    }
+    
+    const results = [];
+    
+    for (const countryCode in locationsData) {
+        const country = locationsData[countryCode];
+        for (const stateCode in country.states) {
+            const state = country.states[stateCode];
+            for (const cityCode in state.cities) {
+                const city = state.cities[cityCode];
+                if (city.name.toLowerCase().includes(query)) {
+                    results.push({
+                        name: city.name,
+                        state: state.name,
+                        country: country.name,
+                        lat: city.lat,
+                        lng: city.lng,
+                        fullName: `${city.name}, ${state.name}, ${country.name}`
+                    });
+                }
+            }
+        }
+    }
+    
+    res.json(results.slice(0, 20));
+});
 
 // ============ PASSPORT CONFIGURATION ============
 passport.use(new LocalStrategy(
@@ -210,6 +293,7 @@ app.get('/', isAuthenticated, (req, res) => {
     res.redirect('/locations');
 });
 
+// Main locations page (TABLE + MAP view)
 app.get('/locations', isAuthenticated, async (req, res) => {
     const userLocations = await Location.find({ userId: req.user._id }).sort({ createdAt: -1 });
     
@@ -230,14 +314,25 @@ app.get('/locations', isAuthenticated, async (req, res) => {
     });
 });
 
+// Add location form
 app.get('/add', isAuthenticated, (req, res) => {
-    const citiesList = Object.keys(cityDatabase).sort();
-    res.render('form', { edit: null, cities: citiesList });
+    res.render('form', { edit: null });
 });
 
+// Add location POST
 app.post('/add', isAuthenticated, upload.single('document'), async (req, res) => {
-    const { name, type, info, city } = req.body;
-    const coords = getCityCoordinates(city);
+    const { name, type, info, city, latitude, longitude } = req.body;
+    
+    let finalLat, finalLng;
+    
+    if (latitude && longitude) {
+        finalLat = parseFloat(latitude);
+        finalLng = parseFloat(longitude);
+    } else {
+        const coords = getCityCoordinates(city);
+        finalLat = coords.lat;
+        finalLng = coords.lng;
+    }
     
     const newLocation = new Location({
         userId: req.user._id,
@@ -245,8 +340,8 @@ app.post('/add', isAuthenticated, upload.single('document'), async (req, res) =>
         type: type,
         info: info,
         city: city,
-        lat: coords.lat,
-        lng: coords.lng,
+        lat: finalLat,
+        lng: finalLng,
         document: req.file ? req.file.filename : null
     });
     
@@ -254,27 +349,38 @@ app.post('/add', isAuthenticated, upload.single('document'), async (req, res) =>
     res.redirect('/locations');
 });
 
+// Edit form
 app.get('/edit/:id', isAuthenticated, async (req, res) => {
     const id = req.params.id;
     const location = await Location.findOne({ _id: id, userId: req.user._id });
-    const citiesList = Object.keys(cityDatabase).sort();
     
     if (location) {
-        res.render('form', { edit: location, cities: citiesList });
+        res.render('form', { edit: location });
     } else {
         res.redirect('/locations');
     }
 });
 
+// Update location
 app.post('/update/:id', isAuthenticated, upload.single('document'), async (req, res) => {
     const id = req.params.id;
-    const { name, type, info, city } = req.body;
-    const coords = getCityCoordinates(city);
+    const { name, type, info, city, latitude, longitude } = req.body;
+    
+    let finalLat, finalLng;
+    
+    if (latitude && longitude) {
+        finalLat = parseFloat(latitude);
+        finalLng = parseFloat(longitude);
+    } else {
+        const coords = getCityCoordinates(city);
+        finalLat = coords.lat;
+        finalLng = coords.lng;
+    }
     
     const updateData = {
         name, type, info, city,
-        lat: coords.lat,
-        lng: coords.lng,
+        lat: finalLat,
+        lng: finalLng,
         updatedAt: new Date()
     };
     
@@ -286,6 +392,7 @@ app.post('/update/:id', isAuthenticated, upload.single('document'), async (req, 
     res.redirect('/locations');
 });
 
+// Delete location
 app.get('/delete/:id', isAuthenticated, async (req, res) => {
     const id = req.params.id;
     const location = await Location.findOne({ _id: id, userId: req.user._id });
@@ -301,6 +408,7 @@ app.get('/delete/:id', isAuthenticated, async (req, res) => {
     res.redirect('/locations');
 });
 
+// Delete all user locations
 app.get('/delete-all', isAuthenticated, async (req, res) => {
     const userLocations = await Location.find({ userId: req.user._id });
     
@@ -317,11 +425,13 @@ app.get('/delete-all', isAuthenticated, async (req, res) => {
     res.redirect('/locations');
 });
 
+// API for map
 app.get('/api/locations', isAuthenticated, async (req, res) => {
     const userLocations = await Location.find({ userId: req.user._id });
     res.json(userLocations);
 });
 
+// Profile page
 app.get('/profile', isAuthenticated, (req, res) => {
     res.render('profile', { user: req.user });
 });
@@ -337,4 +447,7 @@ app.listen(PORT, () => {
     console.log(`🔑 Login: http://localhost:${PORT}/login`);
     console.log(`📍 Dashboard: http://localhost:${PORT}/locations`);
     console.log(`========================================\n`);
+});
+app.get('/add', isAuthenticated, (req, res) => {
+    res.render('form', { edit: null });  // cities variable nahi bhejna
 });
