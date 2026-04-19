@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const multer = require('multer');
@@ -7,7 +8,6 @@ const bcrypt = require('bcryptjs');
 const session = require('express-session');
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
-require('dotenv').config(); // For .env file
 
 const app = express();
 
@@ -77,7 +77,10 @@ const User = mongoose.model('User', userSchema);
 const Location = mongoose.model('Location', locationSchema);
 
 // ============ MONGODB CONNECTION ============
-mongoose.connect(process.env.MONGODB_URI)
+mongoose.connect(process.env.MONGODB_URI, {
+    serverSelectionTimeoutMS: 30000,
+    connectTimeoutMS: 30000,
+})
 .then(() => console.log('✅ MongoDB Connected Successfully!'))
 .catch(err => console.log('❌ MongoDB Connection Error:', err.message));
 
@@ -89,12 +92,7 @@ const cityDatabase = {
     'jalandhar': { lat: 31.3260, lng: 75.5762 },
     'amritsar': { lat: 31.6340, lng: 74.8723 },
     'ludhiana': { lat: 30.9010, lng: 75.8573 },
-    'chandigarh': { lat: 30.7333, lng: 76.7794 },
-    'kolkata': { lat: 22.5726, lng: 88.3639 },
-    'pune': { lat: 18.5204, lng: 73.8567 },
-    'hyderabad': { lat: 17.3850, lng: 78.4867 },
-    'chennai': { lat: 13.0827, lng: 80.2707 },
-    'bangalore': { lat: 12.9716, lng: 77.5946 }
+    'chandigarh': { lat: 30.7333, lng: 76.7794 }
 };
 
 function getCityCoordinates(cityName) {
@@ -334,7 +332,6 @@ app.listen(PORT, () => {
     console.log(`\n========================================`);
     console.log(`✅ LOCATION APP WITH MONGODB IS RUNNING!`);
     console.log(`========================================`);
-    console.log(`🔗 MongoDB: Connected`);
     console.log(`🌐 Server: http://localhost:${PORT}`);
     console.log(`🔐 Register: http://localhost:${PORT}/register`);
     console.log(`🔑 Login: http://localhost:${PORT}/login`);
