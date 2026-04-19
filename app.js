@@ -1,4 +1,5 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const multer = require('multer');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
@@ -6,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const session = require('express-session');
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
+require('dotenv').config(); // For .env file
 
 const app = express();
 
@@ -27,17 +29,15 @@ app.use('/uploads', express.static('uploads'));
 
 // Session setup
 app.use(session({
-    secret: 'your-secret-key-change-this',
+    secret: process.env.SESSION_SECRET || 'your-secret-key',
     resave: false,
     saveUninitialized: false,
-    cookie: { maxAge: 24 * 60 * 60 * 1000 } // 24 hours
+    cookie: { maxAge: 24 * 60 * 60 * 1000 }
 }));
 
-// Passport setup
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Make user available in all views
 app.use((req, res, next) => {
     res.locals.currentUser = req.user;
     next();
@@ -49,13 +49,37 @@ if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
 }
 
-// ============ USER DATABASE (In-memory) ============
-const users = [];
-let nextUserId = 1;
+// ============ MONGODB SCHEMAS ============
 
-// ============ LOCATIONS DATABASE (Per user) ============
-let allLocations = [];
-let nextLocationId = 1;
+// User Schema
+const userSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+});
+
+// Location Schema
+const locationSchema = new mongoose.Schema({
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    name: { type: String, required: true },
+    type: { type: String, required: true },
+    info: { type: String, required: true },
+    city: { type: String, required: true },
+    lat: { type: Number, required: true },
+    lng: { type: Number, required: true },
+    document: { type: String, default: null },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
+});
+
+const User = mongoose.model('User', userSchema);
+const Location = mongoose.model('Location', locationSchema);
+
+// ============ MONGODB CONNECTION ============
+mongoose.connect(process.env.MONGODB_URI)
+.then(() => console.log('✅ MongoDB Connected Successfully!'))
+.catch(err => console.log('❌ MongoDB Connection Error:', err.message));
 
 // City database
 const cityDatabase = {
@@ -81,39 +105,39 @@ function getCityCoordinates(cityName) {
     return { lat: 28.6139, lng: 77.2090 };
 }
 
-// Helper: Get locations for current user
-function getUserLocations(userId) {
-    return allLocations.filter(l => l.userId === userId);
-}
-
 // ============ PASSPORT CONFIGURATION ============
 passport.use(new LocalStrategy(
     { usernameField: 'email' },
     async (email, password, done) => {
-        const user = users.find(u => u.email === email);
-        if (!user) {
-            return done(null, false, { message: 'User not found' });
+        try {
+            const user = await User.findOne({ email: email });
+            if (!user) {
+                return done(null, false, { message: 'User not found' });
+            }
+            const isValid = await bcrypt.compare(password, user.password);
+            if (!isValid) {
+                return done(null, false, { message: 'Invalid password' });
+            }
+            return done(null, user);
+        } catch (err) {
+            return done(err);
         }
-        
-        const isValid = await bcrypt.compare(password, user.password);
-        if (!isValid) {
-            return done(null, false, { message: 'Invalid password' });
-        }
-        
-        return done(null, user);
     }
 ));
 
 passport.serializeUser((user, done) => {
-    done(null, user.id);
+    done(null, user._id);
 });
 
-passport.deserializeUser((id, done) => {
-    const user = users.find(u => u.id === id);
-    done(null, user);
+passport.deserializeUser(async (id, done) => {
+    try {
+        const user = await User.findById(id);
+        done(null, user);
+    } catch (err) {
+        done(err);
+    }
 });
 
-// ============ AUTHENTICATION MIDDLEWARE ============
 function isAuthenticated(req, res, next) {
     if (req.isAuthenticated()) {
         return next();
@@ -130,16 +154,13 @@ function isGuest(req, res, next) {
 
 // ============ AUTH ROUTES ============
 
-// Register page
 app.get('/register', isGuest, (req, res) => {
     res.render('register');
 });
 
-// Register user
 app.post('/register', isGuest, async (req, res) => {
     const { name, email, password, confirmPassword } = req.body;
     
-    // Validation
     if (!name || !email || !password) {
         return res.send('All fields required! <a href="/register">Try again</a>');
     }
@@ -148,45 +169,36 @@ app.post('/register', isGuest, async (req, res) => {
         return res.send('Passwords do not match! <a href="/register">Try again</a>');
     }
     
-    // Check if user exists
-    const existingUser = users.find(u => u.email === email);
+    const existingUser = await User.findOne({ email });
     if (existingUser) {
         return res.send('User already exists! <a href="/login">Login</a>');
     }
     
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
     
-    // Create user
-    const newUser = {
-        id: nextUserId++,
-        name: name,
-        email: email,
-        password: hashedPassword,
-        createdAt: new Date()
-    };
+    const newUser = new User({
+        name,
+        email,
+        password: hashedPassword
+    });
     
-    users.push(newUser);
+    await newUser.save();
     
-    // Auto login after registration
     req.login(newUser, (err) => {
         if (err) return next(err);
         res.redirect('/locations');
     });
 });
 
-// Login page
 app.get('/login', isGuest, (req, res) => {
     res.render('login', { error: req.query.error });
 });
 
-// Login handler
 app.post('/login', isGuest, passport.authenticate('local', {
     successRedirect: '/locations',
     failureRedirect: '/login?error=1'
 }));
 
-// Logout
 app.get('/logout', (req, res) => {
     req.logout((err) => {
         if (err) return next(err);
@@ -194,16 +206,14 @@ app.get('/logout', (req, res) => {
     });
 });
 
-// ============ PROTECTED ROUTES (Require Login) ============
+// ============ PROTECTED ROUTES ============
 
-// Dashboard
 app.get('/', isAuthenticated, (req, res) => {
     res.redirect('/locations');
 });
 
-// View all locations (only user's own locations)
-app.get('/locations', isAuthenticated, (req, res) => {
-    const userLocations = getUserLocations(req.user.id);
+app.get('/locations', isAuthenticated, async (req, res) => {
+    const userLocations = await Location.find({ userId: req.user._id }).sort({ createdAt: -1 });
     
     const stats = {
         total: userLocations.length,
@@ -212,7 +222,7 @@ app.get('/locations', isAuthenticated, (req, res) => {
             event: userLocations.filter(l => l.type === 'event').length,
             delivery: userLocations.filter(l => l.type === 'delivery').length
         },
-        recent: userLocations.slice(-5).reverse()
+        recent: userLocations.slice(0, 5)
     };
     
     res.render('locations', { 
@@ -222,39 +232,33 @@ app.get('/locations', isAuthenticated, (req, res) => {
     });
 });
 
-// Add location form
 app.get('/add', isAuthenticated, (req, res) => {
     const citiesList = Object.keys(cityDatabase).sort();
     res.render('form', { edit: null, cities: citiesList });
 });
 
-// Add location
-app.post('/add', isAuthenticated, upload.single('document'), (req, res) => {
+app.post('/add', isAuthenticated, upload.single('document'), async (req, res) => {
     const { name, type, info, city } = req.body;
     const coords = getCityCoordinates(city);
     
-    const newLocation = {
-        id: nextLocationId++,
-        userId: req.user.id,
+    const newLocation = new Location({
+        userId: req.user._id,
         name: name,
         type: type,
         info: info,
         city: city,
         lat: coords.lat,
         lng: coords.lng,
-        document: req.file ? req.file.filename : null,
-        createdAt: new Date(),
-        updatedAt: new Date()
-    };
+        document: req.file ? req.file.filename : null
+    });
     
-    allLocations.push(newLocation);
+    await newLocation.save();
     res.redirect('/locations');
 });
 
-// Edit form
-app.get('/edit/:id', isAuthenticated, (req, res) => {
-    const id = parseInt(req.params.id);
-    const location = allLocations.find(l => l.id === id && l.userId === req.user.id);
+app.get('/edit/:id', isAuthenticated, async (req, res) => {
+    const id = req.params.id;
+    const location = await Location.findOne({ _id: id, userId: req.user._id });
     const citiesList = Object.keys(cityDatabase).sort();
     
     if (location) {
@@ -264,51 +268,43 @@ app.get('/edit/:id', isAuthenticated, (req, res) => {
     }
 });
 
-// Update location
-app.post('/update/:id', isAuthenticated, upload.single('document'), (req, res) => {
-    const id = parseInt(req.params.id);
+app.post('/update/:id', isAuthenticated, upload.single('document'), async (req, res) => {
+    const id = req.params.id;
     const { name, type, info, city } = req.body;
     const coords = getCityCoordinates(city);
     
-    const index = allLocations.findIndex(l => l.id === id && l.userId === req.user.id);
-    if (index !== -1) {
-        allLocations[index] = {
-            ...allLocations[index],
-            name: name,
-            type: type,
-            info: info,
-            city: city,
-            lat: coords.lat,
-            lng: coords.lng,
-            document: req.file ? req.file.filename : allLocations[index].document,
-            updatedAt: new Date()
-        };
+    const updateData = {
+        name, type, info, city,
+        lat: coords.lat,
+        lng: coords.lng,
+        updatedAt: new Date()
+    };
+    
+    if (req.file) {
+        updateData.document = req.file.filename;
     }
     
+    await Location.updateOne({ _id: id, userId: req.user._id }, updateData);
     res.redirect('/locations');
 });
 
-// Delete location
-app.get('/delete/:id', isAuthenticated, (req, res) => {
-    const id = parseInt(req.params.id);
-    const index = allLocations.findIndex(l => l.id === id && l.userId === req.user.id);
+app.get('/delete/:id', isAuthenticated, async (req, res) => {
+    const id = req.params.id;
+    const location = await Location.findOne({ _id: id, userId: req.user._id });
     
-    if (index !== -1) {
-        if (allLocations[index].document) {
-            const filePath = path.join(__dirname, 'uploads', allLocations[index].document);
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-            }
+    if (location && location.document) {
+        const filePath = path.join(__dirname, 'uploads', location.document);
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
         }
-        allLocations.splice(index, 1);
     }
     
+    await Location.deleteOne({ _id: id, userId: req.user._id });
     res.redirect('/locations');
 });
 
-// Delete all user locations
-app.get('/delete-all', isAuthenticated, (req, res) => {
-    const userLocations = getUserLocations(req.user.id);
+app.get('/delete-all', isAuthenticated, async (req, res) => {
+    const userLocations = await Location.find({ userId: req.user._id });
     
     userLocations.forEach(location => {
         if (location.document) {
@@ -319,32 +315,29 @@ app.get('/delete-all', isAuthenticated, (req, res) => {
         }
     });
     
-    allLocations = allLocations.filter(l => l.userId !== req.user.id);
+    await Location.deleteMany({ userId: req.user._id });
     res.redirect('/locations');
 });
 
-// API for map (only user's locations)
-app.get('/api/locations', isAuthenticated, (req, res) => {
-    const userLocations = getUserLocations(req.user.id);
+app.get('/api/locations', isAuthenticated, async (req, res) => {
+    const userLocations = await Location.find({ userId: req.user._id });
     res.json(userLocations);
 });
 
-// Profile page
 app.get('/profile', isAuthenticated, (req, res) => {
     res.render('profile', { user: req.user });
 });
 
 // Start server
-app.listen(3000, () => {
-    console.log('\n========================================');
-    console.log('✅ LOCATION APP WITH AUTH IS RUNNING!');
-    console.log('========================================');
-    console.log('🔐 REGISTER: http://localhost:3000/register');
-    console.log('🔑 LOGIN: http://localhost:3000/login');
-    console.log('📍 DASHBOARD: http://localhost:3000/locations');
-    console.log('========================================\n');
-    console.log('Demo Users:');
-    console.log('• Create your own account');
-    console.log('• Each user sees only their locations');
-    console.log('========================================\n');
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`\n========================================`);
+    console.log(`✅ LOCATION APP WITH MONGODB IS RUNNING!`);
+    console.log(`========================================`);
+    console.log(`🔗 MongoDB: Connected`);
+    console.log(`🌐 Server: http://localhost:${PORT}`);
+    console.log(`🔐 Register: http://localhost:${PORT}/register`);
+    console.log(`🔑 Login: http://localhost:${PORT}/login`);
+    console.log(`📍 Dashboard: http://localhost:${PORT}/locations`);
+    console.log(`========================================\n`);
 });
